@@ -1,13 +1,24 @@
 from rest_framework import viewsets, generics
-from rest_framework.permissions import IsAdminUser, AllowAny
+from rest_framework.permissions import IsAdminUser
 from django.contrib.auth.models import User
 from .models import Teacher, Student
-from .serializers import TeacherSerializer, StudentSerializer, RegisterSerializer
+from .serializers import (
+    TeacherSerializer,
+    StudentSerializer,
+    RegisterSerializer,
+    CustomTokenObtainPairSerializer,
+)
 from .permission import IsTeacher
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework_simplejwt.views import TokenObtainPairView
 
-# 🔹 Admin-only: Can manage teachers
+# 🔐 Custom Token View for Role-based Login
+class CustomTokenObtainPairView(TokenObtainPairView):
+    serializer_class = CustomTokenObtainPairSerializer
+
+
+# 🔹 Admin-only: Manage teachers
 class TeacherViewSet(viewsets.ModelViewSet):
     queryset = Teacher.objects.all()
     serializer_class = TeacherSerializer
@@ -25,13 +36,17 @@ class TeacherViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(teacher)
         return Response(serializer.data)
 
-# 🔹 Teachers: View their own students only
-# 🔹 Admin: Manage all students (with IsAdminUser)
+
+# 🔹 Admin: All students | Teacher: Own students
 class StudentViewSet(viewsets.ModelViewSet):
     serializer_class = StudentSerializer
-    queryset=Student.objects.all()
+    queryset = Student.objects.all()
+
     def get_permissions(self):
+        user = self.request.user
         if self.request.method == 'GET':
+            if user.is_superuser:
+                return [IsAdminUser()]
             return [IsTeacher()]
         return [IsAdminUser()]
 
@@ -42,7 +57,8 @@ class StudentViewSet(viewsets.ModelViewSet):
         teacher = Teacher.objects.filter(user=user).first()
         return Student.objects.filter(assigned_teacher=teacher)
 
-# 🔹 Admin-only registration endpoint
+
+# 🔹 Admin-only: Register users
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = RegisterSerializer
