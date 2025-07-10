@@ -10,10 +10,8 @@ router.register('students', StudentViewSet, basename='students')
 urlpatterns = [
     path('', include(router.urls)),
 
-    # 🔐 Custom Role-based JWT Auth
+    # Auth endpoints
+    path('register/', RegisterView.as_view(), name='register'),
     path('token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
-
-    # 🔐 Admin Registration Endpoint
-    path('register/', RegisterView.as_view(), name='register'),
 ]
