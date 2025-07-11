@@ -4,78 +4,66 @@ from rest_framework.exceptions import ValidationError, AuthenticationFailed
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import Teacher, Student
 
-
-# 🔹 Teacher Serializer (with auto user creation)
 class TeacherSerializer(serializers.ModelSerializer):
     username = serializers.CharField(write_only=True, required=True)
     password = serializers.CharField(write_only=True, required=True)
-    email = serializers.EmailField(write_only=True, required=True)
+    email = serializers.EmailField(required=True)
 
     class Meta:
         model = Teacher
         fields = [
-            'first_name', 'last_name', 'email', 'phone', 'subject',
+            'id', 'first_name', 'last_name', 'email', 'phone', 'subject',
             'e_id', 'doj', 'status', 'user',
-            'username', 'password'  # for user creation
+            'username', 'password'
         ]
-        read_only_fields = ['user']
+        read_only_fields = ['user', 'id']
 
     def create(self, validated_data):
         username = validated_data.pop('username')
         password = validated_data.pop('password')
-        email = validated_data.pop('email')
+        email = validated_data.get('email')
 
-        # Validate uniqueness
         if User.objects.filter(username=username).exists():
             raise ValidationError({'username': 'This username is already taken.'})
         if User.objects.filter(email=email).exists():
             raise ValidationError({'email': 'This email is already registered.'})
-        if Teacher.objects.filter(email=email).exists():
-            raise ValidationError({'email': 'This email is already used by another teacher.'})
         if Teacher.objects.filter(e_id=validated_data.get('e_id')).exists():
             raise ValidationError({'e_id': 'This e_id already exists.'})
 
         user = User.objects.create_user(username=username, password=password, email=email)
-        teacher = Teacher.objects.create(user=user, email=email, **validated_data)
-        return teacher
-
-
-
-# 🔹 Student Serializer (with automatic User creation)
+        validated_data['user'] = user
+        return Teacher.objects.create(**validated_data)
 class StudentSerializer(serializers.ModelSerializer):
     username = serializers.CharField(write_only=True, required=True)
     password = serializers.CharField(write_only=True, required=True)
-    email = serializers.EmailField(write_only=True, required=True)
+    email = serializers.EmailField(required=True)
 
     class Meta:
         model = Student
         fields = [
             'id', 'first_name', 'last_name', 'phone_number', 'roll_number',
             'student_class', 'date_of_birth', 'admission_date',
-            'status', 'username', 'password', 'email', 'user'
+            'status', 'username', 'password', 'email', 'user', 'assigned_teacher'
         ]
-        read_only_fields = ['user']
+        read_only_fields = ['user', 'id', 'assigned_teacher']
 
     def create(self, validated_data):
         username = validated_data.pop('username')
         password = validated_data.pop('password')
-        email = validated_data.pop('email')
+        email = validated_data.get('email')
 
         if User.objects.filter(username=username).exists():
             raise ValidationError({'username': 'This username is already taken.'})
         if User.objects.filter(email=email).exists():
             raise ValidationError({'email': 'This email is already registered.'})
-        if Student.objects.filter(email=email).exists():
-            raise ValidationError({'email': 'Email is already used by another student.'})
         if Student.objects.filter(roll_number=validated_data.get('roll_number')).exists():
             raise ValidationError({'roll_number': 'Roll number already exists.'})
 
         user = User.objects.create_user(username=username, password=password, email=email)
-        student = Student.objects.create(user=user, email=email, **validated_data)
-        return student
+        validated_data['user'] = user
+        return Student.objects.create(**validated_data)
 
 
-# 🔹 Registration Serializer (for Admin to create generic users)
 class RegisterSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
@@ -90,7 +78,6 @@ class RegisterSerializer(serializers.ModelSerializer):
         return User.objects.create_user(**validated_data)
 
 
-# 🔐 Custom JWT Login Serializer with Role Validation
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
         role = self.context['request'].data.get('role')

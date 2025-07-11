@@ -12,13 +12,13 @@ from .permission import IsTeacher
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework.views import APIView
+from django.http import HttpResponse
+import csv
 
-# 🔐 Custom Token View for Role-based Login
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
 
-
-# 🔹 Admin-only: Manage teachers
 class TeacherViewSet(viewsets.ModelViewSet):
     queryset = Teacher.objects.all()
     serializer_class = TeacherSerializer
@@ -45,7 +45,12 @@ class StudentViewSet(viewsets.ModelViewSet):
         if self.action == 'me':
             return [IsAuthenticated()]
         if self.request.method == 'GET':
-            return [IsAdminUser()] if user.is_superuser else [IsTeacher()]
+            if user.is_superuser:
+                return [IsAdminUser()]
+            elif Student.objects.filter(user=user).exists():
+                return [IsAuthenticated()]  # Allow student to access own details
+            else:
+                return [IsTeacher()]
         if self.request.method == 'POST':
             return [IsAdminUser()] if user.is_superuser else [IsTeacher()]
         if self.request.method in ['PUT', 'PATCH']:
@@ -58,8 +63,15 @@ class StudentViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.is_superuser:
             return Student.objects.all()
-        teacher = Teacher.objects.filter(user=user).first()
-        return Student.objects.filter(assigned_teacher=teacher)
+        elif Teacher.objects.filter(user=user).exists():
+            teacher = Teacher.objects.get(user=user)
+            return Student.objects.filter(assigned_teacher=teacher)
+        elif Student.objects.filter(user=user).exists():
+            student = Student.objects.get(user=user)
+            return Student.objects.filter(id=student.id)
+        else:
+            return Student.objects.none()
+        return Student.objects.none()
 
     def perform_create(self, serializer):
         user = self.request.user
@@ -69,6 +81,27 @@ class StudentViewSet(viewsets.ModelViewSet):
             teacher = Teacher.objects.filter(user=user).first()
             serializer.save(assigned_teacher=teacher)
 
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        user = request.user
+
+        if user.is_superuser:
+            return super().retrieve(request, *args, **kwargs)
+
+        if Teacher.objects.filter(user=user).exists():
+            teacher = Teacher.objects.get(user=user)
+            if instance.assigned_teacher == teacher:
+                return super().retrieve(request, *args, **kwargs)
+            return Response({"detail": "You do not have permission to access this student."}, status=403)
+
+        if Student.objects.filter(user=user).exists():
+            student = Student.objects.get(user=user)
+            if instance.id == student.id:
+                return super().retrieve(request, *args, **kwargs)
+            return Response({"detail": "You do not have permission to access this student."}, status=403)
+
+        return Response({"detail": "Permission denied."}, status=403)
+
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
         user = request.user
@@ -76,13 +109,18 @@ class StudentViewSet(viewsets.ModelViewSet):
         if user.is_superuser:
             return super().update(request, *args, **kwargs)
 
-        # Only the assigned teacher can update
-        teacher = Teacher.objects.filter(user=user).first()
-        if instance.assigned_teacher != teacher:
-            return Response({"detail": "You do not have permission to edit this student."},
-                            status=status.HTTP_403_FORBIDDEN)
+        if Teacher.objects.filter(user=user).exists():
+            teacher = Teacher.objects.get(user=user)
+            if instance.assigned_teacher == teacher:
+                return super().update(request, *args, **kwargs)
+            return Response({"detail": "You do not have permission to edit this student."}, status=403)
 
-        return super().update(request, *args, **kwargs)
+        return Response({"detail": "Permission denied."}, status=403)
+
+    def destroy(self, request, *args, **kwargs):
+        if not request.user.is_superuser:
+            return Response({"detail": "Only admin can delete students."}, status=403)
+        return super().destroy(request, *args, **kwargs)
 
     @action(detail=False, methods=['get'], url_path='me', permission_classes=[IsAuthenticated])
     def me(self, request):
@@ -105,3 +143,33 @@ class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = RegisterSerializer
     permission_classes = [IsAdminUser]
+
+
+class ExportStudentsCSV(APIView):
+    permission_classes = [IsAdminUser]
+
+    def get(self, request):
+        students = Student.objects.all()
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="students.csv"'
+        writer = csv.writer(response)
+        writer.writerow(['First Name', 'Last Name', 'Email', 'Phone', 'Roll No', 'Class'])
+
+        for s in students:
+            writer.writerow([s.first_name, s.last_name, s.email, s.phone_number, s.roll_number, s.student_class])
+        return response
+
+
+class ExportTeachersCSV(APIView):
+    permission_classes = [IsAdminUser]
+
+    def get(self, request):
+        teachers = Teacher.objects.all()
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="teachers.csv"'
+        writer = csv.writer(response)
+        writer.writerow(['First Name', 'Last Name', 'Email', 'Phone', 'Subject'])
+
+        for t in teachers:
+            writer.writerow([t.first_name, t.last_name, t.email, t.phone, t.subject])
+        return response
