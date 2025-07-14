@@ -65,7 +65,7 @@ class StudentViewSet(viewsets.ModelViewSet):
             if user.is_superuser:
                 return [IsAdminUser()]
             elif Student.objects.filter(user=user).exists():
-                return [IsAuthenticated()]  
+                return [IsAuthenticated()]  # Allow student to access own details
             else:
                 return [IsTeacher()]
         if self.request.method == 'POST':
@@ -193,17 +193,20 @@ class ExportTeachersCSV(APIView):
 
 class ImportStudentsCSV(APIView):
     parser_classes = [MultiPartParser]
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsAuthenticated]  
 
     def post(self, request, *args, **kwargs):
         csv_file = request.FILES.get('file')
 
-        if not csv_file.name.endswith('.csv'):
+        if not csv_file or not csv_file.name.endswith('.csv'):
             return Response({"error": "Invalid file format"}, status=status.HTTP_400_BAD_REQUEST)
 
         data_set = TextIOWrapper(csv_file.file, encoding='utf-8')
         csv_reader = csv.DictReader(data_set)
         created = 0
+
+        is_admin = request.user.is_staff
+        is_teacher = hasattr(request.user, 'teacher')
 
         for row in csv_reader:
             if not User.objects.filter(username=row['username']).exists():
@@ -212,7 +215,16 @@ class ImportStudentsCSV(APIView):
                     password=row['password'],
                     email=row['email']
                 )
-                teacher = Teacher.objects.get(id=row['assigned_teacher_id']) if 'assigned_teacher_id' in row else None
+
+                teacher = None
+                if is_admin and 'assigned_teacher_id' in row and row['assigned_teacher_id']:
+                    try:
+                        teacher = Teacher.objects.get(id=row['assigned_teacher_id'])
+                    except Teacher.DoesNotExist:
+                        continue  # Skip if teacher not found
+                elif is_teacher:
+                    teacher = request.user.teacher  # Assign to uploading teacher
+
                 Student.objects.create(
                     user=user,
                     first_name=row['first_name'],
@@ -243,7 +255,7 @@ class PasswordResetRequestView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
 class PasswordResetConfirmView(APIView):
-    permission_classes = []  
+    permission_classes = []  # No auth needed
     
     def post(self, request, uidb64, token):
         new_password = request.data.get('new_password')
@@ -281,7 +293,7 @@ class AssignExamView(generics.CreateAPIView):
 
     def post(self, request, *args, **kwargs):
         exam_id = request.data.get('exam')
-        student_ids = request.data.get('students')  
+        student_ids = request.data.get('students')  # expect list
         
         try:
             exam = Exam.objects.get(id=exam_id)
@@ -297,6 +309,8 @@ class AssignExamView(generics.CreateAPIView):
         
         return Response({'message': 'Exam assigned successfully'}, status=status.HTTP_201_CREATED)
 
+
+# Student lists all exams assigned to them
 class ExamAssignView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -329,15 +343,17 @@ class AttemptExamView(APIView):
         except Exam.DoesNotExist:
             return Response({'error': 'Exam not found'}, status=404)
 
+        # ✅ Check if assigned
         if not ExamAssignment.objects.filter(exam=exam, student=user).exists():
             return Response({'error': 'Not assigned to this exam'}, status=403)
 
+        # ✅ Check if already attempted and submitted
         try:
             attempt = StudentExamAttempt.objects.get(student=user, exam=exam)
             if attempt.score is not None:
                 return Response({'message': 'Exam already attempted and submitted'}, status=403)
 
-
+            # Check time limit
             time_elapsed = timezone.now() - attempt.started_at
             if time_elapsed > timedelta(seconds=exam.duration):
                 return Response({'error': 'Exam time expired'}, status=403)
@@ -345,7 +361,7 @@ class AttemptExamView(APIView):
             return Response({'message': 'Exam already started'}, status=200)
 
         except StudentExamAttempt.DoesNotExist:
-    
+            # First-time attempt
             StudentExamAttempt.objects.create(student=user, exam=exam, started_at=timezone.now())
             return Response({'message': 'Exam begun'}, status=200)
 
@@ -362,16 +378,16 @@ class AttemptExamView(APIView):
         except (Exam.DoesNotExist, StudentExamAttempt.DoesNotExist):
             return Response({'error': 'Invalid exam or attempt'}, status=404)
 
-      
+        # ✅ Block if already submitted
         if attempt.score is not None:
             return Response({'message': 'Exam already submitted'}, status=403)
 
-        
+        # ✅ Check if time expired
         time_elapsed = timezone.now() - attempt.started_at
         if time_elapsed > timedelta(seconds=exam.duration):
             return Response({'error': 'Exam time expired'}, status=403)
 
-        
+        # ✅ Save score
         attempt.score = score
         attempt.save()
 
