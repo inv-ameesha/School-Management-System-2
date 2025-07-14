@@ -69,20 +69,6 @@ class StudentSerializer(serializers.ModelSerializer):
         return Student.objects.create(**validated_data)
 
 
-class RegisterSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = User
-        fields = ['username', 'password', 'email']
-        extra_kwargs = {'password': {'write_only': True}}
-
-    def create(self, validated_data):
-        if User.objects.filter(username=validated_data['username']).exists():
-            raise ValidationError({'username': 'Username already exists'})
-        if User.objects.filter(email=validated_data['email']).exists():
-            raise ValidationError({'email': 'Email already exists'})
-        return User.objects.create_user(**validated_data)
-
-
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
         request = self.context.get('request')

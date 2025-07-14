@@ -2,7 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
     ImportStudentsCSV, PasswordResetConfirmView, PasswordResetRequestView,
-    TeacherViewSet, StudentViewSet, RegisterView,
+    TeacherViewSet, StudentViewSet,
     CustomTokenObtainPairView, ExportTeachersCSV, ExportStudentsCSV,
     ExamCreateView, AssignExamView, ExamAssignView, AttemptExamView,
     AssignedExamsListView
@@ -15,8 +15,6 @@ router.register('students', StudentViewSet, basename='students')
 
 urlpatterns = [
     path('', include(router.urls)),
-
-    path('register/', RegisterView.as_view(), name='register'),
     path('token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('export/students/', ExportStudentsCSV.as_view(), name='export_students_csv'),

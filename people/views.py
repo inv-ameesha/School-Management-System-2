@@ -5,7 +5,6 @@ from .models import Teacher, Student
 from .serializers import (
     TeacherSerializer,
     StudentSerializer,
-    RegisterSerializer,
     CustomTokenObtainPairSerializer,
 )
 from django.utils.timezone import make_aware
@@ -154,12 +153,6 @@ class StudentViewSet(viewsets.ModelViewSet):
         students = Student.objects.filter(assigned_teacher_id=teacher_id)
         serializer = self.get_serializer(students, many=True)
         return Response(serializer.data)
-
-
-class RegisterView(generics.CreateAPIView):
-    queryset = User.objects.all()
-    serializer_class = RegisterSerializer
-    permission_classes = [IsAdminUser]
 
 
 class ExportStudentsCSV(APIView):
