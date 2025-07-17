@@ -3,6 +3,8 @@ import { Routes, Route,Navigate } from 'react-router-dom';
 import LoginPage from './pages/LoginPage';
 import Dashboard from './pages/Dashboard';
 import Students from './pages/Students';
+import AddTeacher from './pages/AddTeacher';
+import Teachers from './pages/Teachers';
 const AppRoutes = () =>{
     const [isAuthenticated, setIsAuthenticated] = useState(false);
    return (
@@ -27,6 +29,16 @@ const AppRoutes = () =>{
                 path="/students" 
                 element={
                     isAuthenticated ? <Students /> : <Navigate to="/" replace />
+                } />
+                <Route 
+                path="/teachers" 
+                element={
+                    isAuthenticated ? <Teachers /> : <Navigate to="/" replace />
+                } />
+                <Route 
+                path="/add-teacher" 
+                element={
+                    isAuthenticated ? <AddTeacher /> : <Navigate to="/" replace />           
                 } />
         </Routes>
       )
