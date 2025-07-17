@@ -1,4 +1,3 @@
-// src/pages/Teachers.jsx
 import { useEffect, useState } from 'react'
 import {
   Container,
