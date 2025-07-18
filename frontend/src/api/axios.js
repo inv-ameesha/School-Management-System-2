@@ -1,13 +1,13 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL, 
+  baseURL: 'http://localhost:8000/people/', 
   withCredentials: true, 
 });
 
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('access');
+    const token = localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -16,12 +16,10 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// 🚨 Handle 401 errors globally (optional)
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      // maybe redirect to login or logout
       localStorage.removeItem('access');
       window.location.href = '/';
     }

@@ -32,8 +32,8 @@ function LoginPage({ onLogin }) {
       if (response.ok) {
         const data = await response.json();
         localStorage.setItem('token', data.access);
-        localStorage.setItem('role', role); // store role in localStorage
-        onLogin(); // navigate to dashboard
+        localStorage.setItem('role', role); 
+        onLogin(); 
       } else {
         const data = await response.json();
         setError(data.detail || 'Invalid credentials');
