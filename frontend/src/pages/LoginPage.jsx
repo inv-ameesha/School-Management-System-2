@@ -12,6 +12,7 @@ import {
   Box,
   Paper,
 } from '@mui/material';
+import { Link } from 'react-router-dom';
 
 function LoginPage({ onLogin }) {
   const [username, setUsername] = useState('');
@@ -75,6 +76,7 @@ function LoginPage({ onLogin }) {
             <Select value={role} onChange={(e) => setRole(e.target.value)} required>
               <MenuItem value="admin">Admin</MenuItem>
               <MenuItem value="teacher">Teacher</MenuItem>
+              <MenuItem value="student">Student</MenuItem>
             </Select>
           </FormControl>
 
@@ -87,6 +89,11 @@ function LoginPage({ onLogin }) {
           </Box>
         </form>
       </Paper>
+      <Box textAlign="center" mt={2}>
+        <Link to="/forgot-password" style={{ textDecoration: 'none', color: '#1976d2' }}>
+          Forgot Password?
+        </Link>
+      </Box>
     </Container>
   );
 }

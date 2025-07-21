@@ -13,12 +13,16 @@ import {
   Box,
   Alert,
 } from '@mui/material';
-
+import { useNavigate } from 'react-router-dom';
+import { UploadFile } from '@mui/icons-material';
 const AddStudent = () => {
   const { register, handleSubmit, reset } = useForm();
   const [teachers, setTeachers] = useState([]);
   const [message, setMessage] = useState('');
-
+  const [importedStudents, setImportedStudents] = useState([]);
+  const [importError, setImportError] = useState('');
+  const navigate = useNavigate();
+  const fileInputRef = React.useRef();
   useEffect(() => {
     const fetchTeachers = async () => {
       try {
@@ -42,13 +46,52 @@ const AddStudent = () => {
     }
   };
 
+  const handleFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    setMessage('');
+    setImportError('');
+    setImportedStudents([]);
+    try {
+      const res = await axios.post('/import/students/', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setMessage(res.data.message || 'Students imported successfully');
+      // Optionally, fetch the latest students or parse the CSV client-side for display
+      // For now, just show a success message
+    } catch (err) {
+      setImportError(err.response?.data?.error || 'Failed to import students');
+    }
+  };
+
+  const handleFileButtonClick = () => {
+    fileInputRef.current.click();
+  };
+
   return (
     <Container maxWidth="sm" sx={{ mt: 5, mb: 5 }}>
       <Typography variant="h4" gutterBottom align="center">
         Add Student
       </Typography>
-
-      {message && <Alert severity={message.includes('✅') ? 'success' : 'success'}>{message}</Alert>}
+      <Button
+        variant="outlined"
+        startIcon={<UploadFile />}
+        onClick={handleFileButtonClick}
+        sx={{ mb: 2 }}
+      >
+        Import Students (CSV)
+      </Button>
+      <input
+        type="file"
+        accept=".csv"
+        ref={fileInputRef}
+        style={{ display: 'none' }}
+        onChange={handleFileChange}
+      />
+      {message && <Alert severity="success">{message}</Alert>}
+      {importError && <Alert severity="error">{importError}</Alert>}
 
       <Box component="form" onSubmit={handleSubmit(onSubmit)} noValidate sx={{ mt: 3 }}>
         <TextField fullWidth label="First Name" margin="normal" {...register('first_name')} required />
@@ -82,7 +125,11 @@ const AddStudent = () => {
         <Button fullWidth type="submit" variant="contained" sx={{ mt: 3 }}>
           Add Student
         </Button>
+        <br></br>
       </Box>
+      <Button variant="outlined" sx={{ ml: 2,mt:2 }} onClick={() => navigate(-1)}>
+        Back
+      </Button>
     </Container>
   );
 };
