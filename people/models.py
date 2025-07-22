@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User
 from datetime import timedelta
+from django.utils import timezone
 
 class Teacher(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, null=True, blank=True)
@@ -28,7 +29,7 @@ class Student(models.Model):
     date_of_birth = models.DateField()
     admission_date = models.DateField()
     status = models.CharField(max_length=10, choices=[('Active', 'Active'), ('Inactive', 'Inactive')])
-    assigned_teacher = models.ForeignKey(Teacher, on_delete=models.SET_NULL, null=True)
+    assigned_teacher = models.ForeignKey('Teacher', on_delete=models.SET_NULL, null=True)
 
     def __str__(self):
         return f"{self.first_name} {self.last_name}"

@@ -151,6 +151,9 @@ const AddTeacher = () => {
 
       {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
       {success && <Alert severity="success" sx={{ mt: 2 }}>{success}</Alert>}
+      <Button variant="outlined" sx={{ ml: 2,mt: 2 }} onClick={() => navigate('/dashboard')}>
+        Back
+      </Button>
     </Container>
   )
 }

@@ -1,12 +1,13 @@
 from rest_framework import viewsets, generics
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from django.contrib.auth.models import User
-from .models import Teacher, Student
+from .models import Teacher, Student , Exam
 from .serializers import (
     TeacherSerializer,
     StudentSerializer,
-    CustomTokenObtainPairSerializer,
+    CustomTokenObtainPairSerializer,ExamSerializer
 )
+from rest_framework.views import APIView
 from django.utils.timezone import make_aware
 from .permission import IsTeacher
 from io import TextIOWrapper
@@ -31,6 +32,8 @@ from rest_framework import generics, permissions, status
 from django.utils import timezone
 from datetime import datetime, timedelta
 from django.utils import timezone
+from rest_framework.permissions import AllowAny
+from rest_framework.generics import RetrieveAPIView
 
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
@@ -236,7 +239,7 @@ class ImportStudentsCSV(APIView):
         return Response({"message": f"{created} students imported successfully"}, status=status.HTTP_201_CREATED)
 
 class PasswordResetRequestView(APIView):
-    permission_classes = []  # No auth needed
+    permission_classes = [AllowAny] 
 
     def post(self, request):
         serializer = PasswordResetRequestSerializer(data=request.data)
@@ -248,7 +251,7 @@ class PasswordResetRequestView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
 class PasswordResetConfirmView(APIView):
-    permission_classes = []  # No auth needed
+    permission_classes = [AllowAny]  # No auth needed
     
     def post(self, request, uidb64, token):
         new_password = request.data.get('new_password')
@@ -273,6 +276,14 @@ class PasswordResetConfirmView(APIView):
         user.save()
         return Response({'message': 'Password has been reset successfully!'}, status=status.HTTP_200_OK)
 
+class TeacherCreatedExamsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        exams = Exam.objects.filter(teacher=request.user)
+        serializer = ExamSerializer(exams, many=True)
+        return Response(serializer.data)
+
 class ExamCreateView(generics.CreateAPIView):
     serializer_class = ExamSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -286,21 +297,19 @@ class AssignExamView(generics.CreateAPIView):
 
     def post(self, request, *args, **kwargs):
         exam_id = request.data.get('exam')
-        student_ids = request.data.get('students')  # expect list
-        
+        student_ids = request.data.get('students')  # list of Student IDs
+
         try:
             exam = Exam.objects.get(id=exam_id)
         except Exam.DoesNotExist:
-            return Response({'error': 'Exam not found'}, status=status.HTTP_404_NOT_FOUND)
+            return Response({'error': 'Exam not found'}, status=404)
 
         for sid in student_ids:
-            try:
-                student = User.objects.get(id=sid)
-                ExamAssignment.objects.get_or_create(exam=exam, student=student)
-            except User.DoesNotExist:
-                return Response({'error': f'Student with id {sid} not found'}, status=status.HTTP_404_NOT_FOUND)
-        
-        return Response({'message': 'Exam assigned successfully'}, status=status.HTTP_201_CREATED)
+            student_obj = Student.objects.get(id=sid)
+            user_obj = student_obj.user
+            ExamAssignment.objects.get_or_create(exam=exam, student=user_obj)  # must use user_obj
+
+        return Response({'message': 'Exam assigned successfully'}, status=201)
 
 
 # Student lists all exams assigned to them
@@ -329,61 +338,19 @@ class ExamAssignView(APIView):
 class AttemptExamView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
-    def get(self, request, exam_id):
+    def post(self, request, exam_id):
         user = request.user
         try:
             exam = Exam.objects.get(id=exam_id)
         except Exam.DoesNotExist:
             return Response({'error': 'Exam not found'}, status=404)
 
-        # ✅ Check if assigned
-        if not ExamAssignment.objects.filter(exam=exam, student=user).exists():
-            return Response({'error': 'Not assigned to this exam'}, status=403)
-
-        # ✅ Check if already attempted and submitted
-        try:
-            attempt = StudentExamAttempt.objects.get(student=user, exam=exam)
-            if attempt.score is not None:
-                return Response({'message': 'Exam already attempted and submitted'}, status=403)
-
-            # Check time limit
-            time_elapsed = timezone.now() - attempt.started_at
-            if time_elapsed > timedelta(seconds=exam.duration):
-                return Response({'error': 'Exam time expired'}, status=403)
-
-            return Response({'message': 'Exam already started'}, status=200)
-
-        except StudentExamAttempt.DoesNotExist:
-            # First-time attempt
-            StudentExamAttempt.objects.create(student=user, exam=exam, started_at=timezone.now())
-            return Response({'message': 'Exam begun'}, status=200)
-
-    def post(self, request, exam_id):
-        user = request.user
-        score = request.data.get('score')
-
-        if score is None:
-            return Response({'error': 'Score not provided'}, status=400)
-
-        try:
-            exam = Exam.objects.get(id=exam_id)
-            attempt = StudentExamAttempt.objects.get(student=user, exam=exam)
-        except (Exam.DoesNotExist, StudentExamAttempt.DoesNotExist):
-            return Response({'error': 'Invalid exam or attempt'}, status=404)
-
-        # ✅ Block if already submitted
-        if attempt.score is not None:
+        # Check if already attempted
+        if StudentExamAttempt.objects.filter(student=user, exam=exam).exists():
             return Response({'message': 'Exam already submitted'}, status=403)
 
-        # ✅ Check if time expired
-        time_elapsed = timezone.now() - attempt.started_at
-        if time_elapsed > timedelta(seconds=exam.duration):
-            return Response({'error': 'Exam time expired'}, status=403)
-
-        # ✅ Save score
-        attempt.score = score
-        attempt.save()
-
+        # Create the attempt
+        StudentExamAttempt.objects.create(student=user, exam=exam, started_at=timezone.now())
         return Response({'message': 'Exam submitted successfully'}, status=201)
 
 class AssignedExamsListView(generics.ListAPIView):
@@ -392,21 +359,64 @@ class AssignedExamsListView(generics.ListAPIView):
 
     def get_queryset(self):
         user = self.request.user
-
-        now = timezone.now()
-
-        assignments = ExamAssignment.objects.filter(student=user)
-
+        try:
+            student = Student.objects.get(user=user)
+        except Student.DoesNotExist:
+            return ExamAssignment.objects.none()
+        assignments = ExamAssignment.objects.filter(student=user)  # must use user
         valid_assignments = []
         for assignment in assignments:
             exam = assignment.exam
+            # Only include if NOT already attempted
             if StudentExamAttempt.objects.filter(exam=exam, student=user).exists():
                 continue
+            # Only include if NOT expired
             exam_start_time = assignment.assigned_at
             exam_end_time = exam_start_time + timezone.timedelta(minutes=exam.duration)
-            if now > exam_end_time:
+            if timezone.now() > exam_end_time:
                 continue
-
+            # If not attempted and not expired, include in the list
             valid_assignments.append(assignment.id)
-
         return ExamAssignment.objects.filter(id__in=valid_assignments)
+
+class ExamDetailView(RetrieveAPIView):
+    queryset = Exam.objects.all()
+    serializer_class = ExamSerializer
+
+class ImportTeachersCSV(APIView):
+    parser_classes = [MultiPartParser]
+    permission_classes = [IsAdminUser]
+
+    def post(self, request, *args, **kwargs):
+        csv_file = request.FILES.get('file')
+
+        if not csv_file or not csv_file.name.endswith('.csv'):
+            return Response({"error": "Invalid file format"}, status=status.HTTP_400_BAD_REQUEST)
+
+        data_set = TextIOWrapper(csv_file.file, encoding='utf-8')
+        csv_reader = csv.DictReader(data_set)
+        created = 0
+
+        for row in csv_reader:
+            if not User.objects.filter(username=row['username']).exists():
+                user = User.objects.create_user(
+                    username=row['username'],
+                    password=row['password'],
+                    email=row['email'],
+                    first_name=row['first_name'],
+                    last_name=row['last_name']
+                )
+                Teacher.objects.create(
+                    user=user,
+                    first_name=row['first_name'],
+                    last_name=row['last_name'],
+                    email=row['email'],
+                    phone=row['phone'],
+                    subject=row['subject'],
+                    date_of_birth=row.get('date_of_birth', None),
+                    hire_date=row.get('hire_date', None),
+                    status=row.get('status', 'Active')
+                )
+                created += 1
+
+        return Response({"message": f"{created} teachers imported successfully"}, status=status.HTTP_201_CREATED)

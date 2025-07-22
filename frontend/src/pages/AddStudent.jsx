@@ -59,8 +59,6 @@ const AddStudent = () => {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       setMessage(res.data.message || 'Students imported successfully');
-      // Optionally, fetch the latest students or parse the CSV client-side for display
-      // For now, just show a success message
     } catch (err) {
       setImportError(err.response?.data?.error || 'Failed to import students');
     }
@@ -125,9 +123,8 @@ const AddStudent = () => {
         <Button fullWidth type="submit" variant="contained" sx={{ mt: 3 }}>
           Add Student
         </Button>
-        <br></br>
       </Box>
-      <Button variant="outlined" sx={{ ml: 2,mt:2 }} onClick={() => navigate(-1)}>
+      <Button variant="outlined" sx={{ ml: 2,mt: 2 }} onClick={() => navigate('/dashboard')}>
         Back
       </Button>
     </Container>

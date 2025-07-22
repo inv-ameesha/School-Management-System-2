@@ -11,8 +11,8 @@ def send_password_reset_email(user, request):
     uid = urlsafe_base64_encode(force_bytes(user.pk))
     token = default_token_generator.make_token(user)
 
-    domain = get_current_site(request).domain
-    reset_link = f"http://{domain}/reset-password-confirm/{uid}/{token}/"
+    frontend_domain = "localhost:5173"
+    reset_link = f"http://{frontend_domain}/reset-password-confirm/{uid}/{token}/"
 
     subject = "Password Reset Request"
     message = f"Hi {user.username},\n\nClick the link below to reset your password:\n{reset_link}\n\nIf you didn't request this, please ignore this email."

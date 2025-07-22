@@ -71,32 +71,18 @@ class StudentSerializer(serializers.ModelSerializer):
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
-        request = self.context.get('request')
-    
-        if request and hasattr(request, 'data'):
-            role = request.data.get('role') if hasattr(request.data, 'get') else None
-        elif request and hasattr(request, '_data'):
-            role = request._data.get('role') if hasattr(request._data, 'get') else None
-        else:
-            role = None
-
-        if not role:
-            raise AuthenticationFailed('Role is required.')
-
         data = super().validate(attrs)
         user = self.user
 
-        if role == 'admin':
-            if not user.is_superuser:
-                raise AuthenticationFailed('This user is not an admin.')
-        elif role == 'teacher':
-            if not Teacher.objects.filter(user=user).exists():
-                raise AuthenticationFailed('This user is not a teacher.')
-        elif role == 'student':
-            if not Student.objects.filter(user=user).exists():
-                raise AuthenticationFailed('This user is not a student.')
+        # Determine role based on user properties
+        if user.is_superuser:
+            role = 'admin'
+        elif hasattr(user, 'teacher'):
+            role = 'teacher'
+        elif hasattr(user, 'student'):
+            role = 'student'
         else:
-            raise AuthenticationFailed('Invalid role provided.')
+            role = 'unknown'
 
         data['role'] = role
         data['username'] = user.username
@@ -137,14 +123,13 @@ class QuestionSerializer(serializers.ModelSerializer):
 
 
 class ExamSerializer(serializers.ModelSerializer):
-    questions = QuestionSerializer(many=True, write_only=True)
+    questions = QuestionSerializer(many=True)
 
     class Meta:
         model = Exam
         fields = ['id', 'title', 'subject', 'date', 'duration', 'questions']
 
     def create(self, validated_data):
-       
         teacher_user = validated_data.pop('teacher', None)
         if not teacher_user:
             request = self.context.get('request')
@@ -153,7 +138,7 @@ class ExamSerializer(serializers.ModelSerializer):
         if not teacher_user or not hasattr(teacher_user, 'teacher'):
             raise serializers.ValidationError("Only teachers can create exams.")
 
-        questions_data = validated_data.pop('questions')
+        questions_data = validated_data.pop('questions',[])
         exam = Exam.objects.create(teacher=teacher_user, **validated_data)  # Assign User instance
         for question_data in questions_data:
             Question.objects.create(exam=exam, **question_data)
@@ -177,16 +162,13 @@ class StudentExamAttemptSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = StudentExamAttempt
-        fields = ['exam', 'answers']
+        fields = ['exam', 'student', 'answers']
         read_only_fields = ['start_time', 'submitted', 'score']
 
     def create(self, validated_data):
         answers_data = validated_data.pop('answers')
-        
         student = validated_data.pop('student', None)
-        if student:
-            validated_data['student'] = student.user if hasattr(student, 'user') else student
-        attempt = StudentExamAttempt.objects.create(**validated_data)
+        attempt = StudentExamAttempt.objects.create(student=student, **validated_data)
         for answer_data in answers_data:
             StudentAnswer.objects.create(attempt=attempt, **answer_data)
         return attempt

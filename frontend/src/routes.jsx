@@ -6,6 +6,15 @@ import Students from './pages/Students';
 import AddTeacher from './pages/AddTeacher';
 import Teachers from './pages/Teachers';
 import AddStudent from './pages/AddStudent';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
+import TeacherExams from './pages/TeacherExams';
+import AssignExam from './pages/AssignExam';
+import StudentExams from './pages/StudentExams';
+import AttemptExam from './pages/AttemptExam';
+import StudentDetails from './pages/StudentDetails';
+import EditStudent from './pages/EditStudent';
+import EditTeacher from './pages/EditTeacher';
 const AppRoutes = () => {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     return (
@@ -50,6 +59,30 @@ const AppRoutes = () => {
                 element={
                     isAuthenticated ? <AddStudent /> : <Navigate to="/" replace />
                 } />
+            <Route
+                path="/forgot-password"
+                element={<ForgotPassword />}
+            />
+            <Route
+                path="/reset-password-confirm/:uidb64/:token"
+                element={<ResetPassword />}
+            />
+            <Route
+                path="/teacher-exams"
+                element={<TeacherExams />}
+            />
+            <Route
+                path="/assign-exam"
+                element={<AssignExam />}
+            />
+            <Route
+                path="/student-exams"
+                element={<StudentExams />}
+            />
+            <Route path="/attempt-exam/:examId" element={<AttemptExam />} />
+            <Route path="/student-details" element={<StudentDetails />} />
+            <Route path="/edit-student/:id" element={<EditStudent />} />
+            <Route path="/edit-teacher/:id" element={<EditTeacher />} />
         </Routes>
     )
 }

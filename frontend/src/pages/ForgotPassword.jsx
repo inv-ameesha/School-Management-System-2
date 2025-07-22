@@ -56,8 +56,8 @@ const ForgotPassword = () => {
           </Box>
         </form>
       </Paper>
-      <Button variant="outlined" sx={{ ml: 2, mt: 2 }} onClick={() => navigate('/dashboard')}>
-        Back
+      <Button variant="outlined" sx={{ ml: 2,mt: 2 }} onClick={() => navigate('/')}>
+        Login
       </Button>
     </Container>
   );

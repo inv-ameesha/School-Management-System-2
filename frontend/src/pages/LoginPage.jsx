@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Container,
   TextField,
@@ -17,8 +17,13 @@ import { Link } from 'react-router-dom';
 function LoginPage({ onLogin }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState('admin'); 
+  const [role, setRole] = useState('teacher');
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    const name = localStorage.getItem('teacherName') || localStorage.getItem('studentName') || localStorage.getItem('adminName') || 'User';
+    setUsername(name);
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -33,8 +38,8 @@ function LoginPage({ onLogin }) {
       if (response.ok) {
         const data = await response.json();
         localStorage.setItem('token', data.access);
-        localStorage.setItem('role', role); 
-        onLogin(); 
+        localStorage.setItem('role', role);
+        onLogin();
       } else {
         const data = await response.json();
         setError(data.detail || 'Invalid credentials');
@@ -72,13 +77,20 @@ function LoginPage({ onLogin }) {
           />
 
           <FormControl fullWidth margin="normal">
-            <InputLabel>Role</InputLabel>
-            <Select value={role} onChange={(e) => setRole(e.target.value)} required>
-              <MenuItem value="admin">Admin</MenuItem>
-              <MenuItem value="teacher">Teacher</MenuItem>
+            <InputLabel id="role-label">Role</InputLabel>
+            <Select
+              labelId="role-label"
+              id="role"
+              value={role}
+              label="Role"
+              onChange={(e) => setRole(e.target.value)}
+            >
               <MenuItem value="student">Student</MenuItem>
+              <MenuItem value="teacher">Teacher</MenuItem>
+              <MenuItem value="admin">Admin</MenuItem>
             </Select>
           </FormControl>
+
 
           {error && <Alert severity="error" sx={{ my: 2 }}>{error}</Alert>}
 

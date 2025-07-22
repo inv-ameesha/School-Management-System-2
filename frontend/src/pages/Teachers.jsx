@@ -11,14 +11,20 @@ import {
   Paper,
   CircularProgress,
   Alert,
-  Box,
+  Box,Button, IconButton, Dialog, DialogTitle, DialogContent, DialogActions
 } from '@mui/material'
 import api from '../api/axios'
-
+import { useNavigate } from 'react-router-dom'
+import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
 const Teachers = () => {
   const [teachers, setTeachers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [deleteId, setDeleteId] = useState(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const navigate = useNavigate();
+  const isAdmin = localStorage.getItem('role') === 'admin';
 
   useEffect(() => {
     const fetchTeachers = async () => {
@@ -41,6 +47,17 @@ const Teachers = () => {
 
     fetchTeachers()
   }, [])
+
+  const handleDelete = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      await api.delete(`teachers/${deleteId}/`);
+      setTeachers(teachers.filter(t => t.id !== deleteId));
+      setConfirmOpen(false);
+    } catch (err) {
+     
+    }
+  };
 
   return (
     <Container maxWidth="lg" sx={{ mt: 5 }}>
@@ -73,6 +90,7 @@ const Teachers = () => {
                 <TableCell>Employee ID</TableCell>
                 <TableCell>Date of Joining</TableCell>
                 <TableCell>Status</TableCell>
+                {isAdmin && <TableCell>Actions</TableCell>}
               </TableRow>
             </TableHead>
             <TableBody>
@@ -86,12 +104,29 @@ const Teachers = () => {
                   <TableCell>{t.e_id}</TableCell>
                   <TableCell>{new Date(t.doj).toLocaleDateString()}</TableCell>
                   <TableCell>{t.status}</TableCell>
+                  {isAdmin && (
+                    <TableCell>
+                      <IconButton onClick={() => navigate(`/edit-teacher/${t.id}`)}><EditIcon /></IconButton>
+                      <IconButton onClick={() => { setDeleteId(t.id); setConfirmOpen(true); }}><DeleteIcon /></IconButton>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </TableContainer>
       )}
+      <Button variant="outlined" sx={{ ml: 2,mt: 2 }} onClick={() => navigate('/dashboard')}>
+        Back
+      </Button>
+      <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
+        <DialogTitle>Delete Teacher</DialogTitle>
+        <DialogContent>Are you sure you want to delete this teacher?</DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmOpen(false)}>Cancel</Button>
+          <Button color="error" onClick={handleDelete}>Delete</Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   )
 }
