@@ -116,8 +116,8 @@ const TeacherExams = () => {
         <Typography variant="h4" gutterBottom align="center">
           Manage Exams
         </Typography>
-        <Box mt={3}>
-          <Button variant="contained" color="primary" sx={{ mr: 2 }} onClick={() => setShowForm(!showForm)}>
+        <Box mt={3} ml={5}>
+          <Button variant="contained" color="primary" sx={{ mr: 2 , ml:4}} onClick={() => setShowForm(!showForm)}>
             {showForm ? 'Cancel' : 'Create New Exam'}
           </Button>
           <Button variant="outlined" color="secondary" onClick={() => navigate('/assign-exam')}>

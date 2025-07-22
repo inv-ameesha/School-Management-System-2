@@ -77,7 +77,7 @@ const AddStudent = () => {
         variant="outlined"
         startIcon={<UploadFile />}
         onClick={handleFileButtonClick}
-        sx={{ mb: 2 }}
+        sx={{ mb: 2,ml:20 }}
       >
         Import Students (CSV)
       </Button>
@@ -124,7 +124,7 @@ const AddStudent = () => {
           Add Student
         </Button>
       </Box>
-      <Button variant="outlined" sx={{ ml: 2,mt: 2 }} onClick={() => navigate('/dashboard')}>
+      <Button variant="outlined" sx={{ ml: 30,mt: 2 }} onClick={() => navigate('/dashboard')}>
         Back
       </Button>
     </Container>

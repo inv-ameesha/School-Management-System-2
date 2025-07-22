@@ -15,6 +15,7 @@ import AttemptExam from './pages/AttemptExam';
 import StudentDetails from './pages/StudentDetails';
 import EditStudent from './pages/EditStudent';
 import EditTeacher from './pages/EditTeacher';
+import Layout from './pages/Layout';
 const AppRoutes = () => {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     return (
@@ -29,60 +30,62 @@ const AppRoutes = () => {
                     )
                 }
             />
-            <Route
-                path="/dashboard"
-                element={
-                    isAuthenticated ? (
-                        <Dashboard onLogout={() => setIsAuthenticated(false)} />
-                    ) : (
-                        <Navigate to="/" replace />
-                    )
-                }
-            />
-            <Route
-                path="/students"
-                element={
-                    isAuthenticated ? <Students /> : <Navigate to="/" replace />
-                } />
-            <Route
-                path="/teachers"
-                element={
-                    isAuthenticated ? <Teachers /> : <Navigate to="/" replace />
-                } />
-            <Route
-                path="/add-teacher"
-                element={
-                    isAuthenticated ? <AddTeacher /> : <Navigate to="/" replace />
-                } />
-            <Route
-                path="/add-student"
-                element={
-                    isAuthenticated ? <AddStudent /> : <Navigate to="/" replace />
-                } />
-            <Route
-                path="/forgot-password"
-                element={<ForgotPassword />}
-            />
-            <Route
-                path="/reset-password-confirm/:uidb64/:token"
-                element={<ResetPassword />}
-            />
-            <Route
-                path="/teacher-exams"
-                element={<TeacherExams />}
-            />
-            <Route
-                path="/assign-exam"
-                element={<AssignExam />}
-            />
-            <Route
-                path="/student-exams"
-                element={<StudentExams />}
-            />
-            <Route path="/attempt-exam/:examId" element={<AttemptExam />} />
-            <Route path="/student-details" element={<StudentDetails />} />
-            <Route path="/edit-student/:id" element={<EditStudent />} />
-            <Route path="/edit-teacher/:id" element={<EditTeacher />} />
+            <Route element={<Layout />}>
+                <Route
+                    path="/dashboard"
+                    element={
+                        isAuthenticated ? (
+                            <Dashboard onLogout={() => setIsAuthenticated(false)} />
+                        ) : (
+                            <Navigate to="/" replace />
+                        )
+                    }
+                />
+                <Route
+                    path="/students"
+                    element={
+                        isAuthenticated ? <Students /> : <Navigate to="/" replace />
+                    } />
+                <Route
+                    path="/teachers"
+                    element={
+                        isAuthenticated ? <Teachers /> : <Navigate to="/" replace />
+                    } />
+                <Route
+                    path="/add-teacher"
+                    element={
+                        isAuthenticated ? <AddTeacher /> : <Navigate to="/" replace />
+                    } />
+                <Route
+                    path="/add-student"
+                    element={
+                        isAuthenticated ? <AddStudent /> : <Navigate to="/" replace />
+                    } />
+                <Route
+                    path="/forgot-password"
+                    element={<ForgotPassword />}
+                />
+                <Route
+                    path="/reset-password-confirm/:uidb64/:token"
+                    element={<ResetPassword />}
+                />
+                <Route
+                    path="/teacher-exams"
+                    element={<TeacherExams />}
+                />
+                <Route
+                    path="/assign-exam"
+                    element={<AssignExam />}
+                />
+                <Route
+                    path="/student-exams"
+                    element={<StudentExams />}
+                />
+                <Route path="/attempt-exam/:examId" element={<AttemptExam />} />
+                <Route path="/student-details" element={<StudentDetails />} />
+                <Route path="/edit-student/:id" element={<EditStudent />} />
+                <Route path="/edit-teacher/:id" element={<EditTeacher />} />
+            </Route>
         </Routes>
     )
 }

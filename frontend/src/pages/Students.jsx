@@ -119,7 +119,7 @@ function Students() {
           </Table>
         </TableContainer>
       )}
-      <Button variant="outlined" sx={{ ml: 2,mt: 2 }} onClick={() => navigate('/dashboard')}>
+      <Button variant="outlined" sx={{ ml: 70,mt: 2 }} onClick={() => navigate('/dashboard')}>
         Back
       </Button>
 

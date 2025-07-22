@@ -52,7 +52,7 @@ const AddTeacher = () => {
 
   return (
     <Container maxWidth="sm" sx={{ mt: 5 }}>
-      <Typography variant="h5" gutterBottom>
+      <Typography variant="h5" gutterBottom sx={{ml:25}}>
         Add Teacher
       </Typography>
 
