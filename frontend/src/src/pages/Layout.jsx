@@ -1,20 +1,7 @@
-import {
-  AppBar,
-  Toolbar,
-  Typography,
-  Button,
-  Box,
-  Drawer,
-  IconButton,
-  List,
-  ListItem,
-  ListItemText,
-  GlobalStyles,
-  useTheme,
-  useMediaQuery
-} from '@mui/material';
-import MenuIcon from '@mui/icons-material/Menu';
+// src/components/Layout.js
 import { Outlet, useNavigate } from 'react-router-dom';
+import { AppBar, Toolbar, Typography, Button, Box, Drawer, IconButton, List, ListItem, ListItemText, GlobalStyles } from '@mui/material';
+import MenuIcon from '@mui/icons-material/Menu';
 import { useEffect, useState } from 'react';
 
 const defaultNavItems = [
@@ -28,9 +15,6 @@ const Layout = () => {
   const [navItems, setNavItems] = useState(defaultNavItems);
   const [username, setUsername] = useState('User');
   const navigate = useNavigate();
-
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   useEffect(() => {
     const role = localStorage.getItem('role');
@@ -68,18 +52,11 @@ const Layout = () => {
     }
   }, []);
 
-  const drawerContent = (
-    <Box sx={{ width: 250, mt: 2 }}>
+  const drawer = (
+    <Box sx={{ width: 250 }} onClick={() => setDrawerOpen(false)}>
       <List>
         {navItems.map(item => (
-          <ListItem
-            button
-            key={item.label}
-            onClick={() => {
-              navigate(item.path);
-              if (isMobile) setDrawerOpen(false);
-            }}
-          >
+          <ListItem button key={item.label} onClick={() => navigate(item.path)}>
             <ListItemText primary={item.label} />
           </ListItem>
         ))}
@@ -94,19 +71,20 @@ const Layout = () => {
         body: { margin: 0, padding: 0, width: '100vw', height: '100vh' },
         '#root': { width: '100vw', height: '100vh' },
       }} />
-
-      {/* AppBar */}
       <AppBar position="static" sx={{ bgcolor: '#232323', color: '#fff' }}>
         <Toolbar sx={{ justifyContent: 'space-between' }}>
-          <Box display="flex" alignItems="center" gap={2}>
-            {isMobile && (
-              <IconButton color="inherit" onClick={() => setDrawerOpen(true)}>
-                <MenuIcon />
-              </IconButton>
-            )}
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>
-              School Management
-            </Typography>
+          <Typography variant="h6" sx={{ fontWeight: 700 }}>School Management</Typography>
+          <Box sx={{ display: { xs: 'flex', md: 'none' } }}>
+            <IconButton color="inherit" onClick={() => setDrawerOpen(true)}>
+              <MenuIcon />
+            </IconButton>
+          </Box>
+          <Box sx={{ display: { xs: 'none', md: 'flex' }, gap: 2 }}>
+            {navItems.map((item) => (
+              <Button key={item.label} sx={{ color: '#fff' }} onClick={() => navigate(item.path)}>
+                {item.label}
+              </Button>
+            ))}
           </Box>
           <Button
             variant="contained"
@@ -120,42 +98,10 @@ const Layout = () => {
           </Button>
         </Toolbar>
       </AppBar>
-
-      {/* Drawer (Sidebar) */}
-      {isMobile ? (
-        <Drawer
-          anchor="left"
-          open={drawerOpen}
-          onClose={() => setDrawerOpen(false)}
-        >
-          {drawerContent}
-        </Drawer>
-      ) : (
-        <Drawer
-          variant="permanent"
-          anchor="left"
-          PaperProps={{
-            sx: {
-              width: 240,
-              mt: '64px', // below AppBar
-              bgcolor: '#f4f4f4'
-            }
-          }}
-        >
-          {drawerContent}
-        </Drawer>
-      )}
-
-      {/* Main Content */}
-      <Box
-        sx={{
-          height: 'calc(100vh - 64px)',
-          overflow: 'auto',
-          bgcolor: '#e6f2d6',
-          p: 3,
-          ml: isMobile ? 0 : 30, // Offset main content from drawer on desktop
-        }}
-      >
+      <Drawer anchor="left" open={drawerOpen} onClose={() => setDrawerOpen(false)}>
+        {drawer}
+      </Drawer>
+      <Box sx={{ height: 'calc(100vh - 64px)', overflow: 'auto', bgcolor: '#e6f2d6', p: 3 }}>
         <Outlet />
       </Box>
     </>

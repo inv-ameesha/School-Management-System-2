@@ -1,18 +1,9 @@
 import { useEffect, useState } from 'react'
 import {
-  Container,
-  Typography,
-  Table,
-  TableHead,
-  TableBody,
-  TableRow,
-  TableCell,
-  TableContainer,
-  Paper,
-  CircularProgress,
-  Alert,
-  Box,Button, IconButton, Dialog, DialogTitle, DialogContent, DialogActions
-} from '@mui/material'
+  Container, Typography, Table, TableHead, TableBody, TableRow, TableCell, TableContainer, Paper,
+  CircularProgress, Alert, Box, Button, IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
+  Pagination
+} from '@mui/material';
 import api from '../api/axios' 
 import { useNavigate } from 'react-router-dom'
 import EditIcon from '@mui/icons-material/Edit';
@@ -24,17 +15,19 @@ function Students() {
   const [error, setError] = useState('')
   const [deleteId, setDeleteId] = useState(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const navigate = useNavigate();
   const isAdmin = localStorage.getItem('role') === 'admin';
 
   useEffect(() => {
     const fetchStudents = async () => {
-      setLoading(true)
-      setError('')
-
+      setLoading(true);
+      setError('');
       try {
-        const response = await api.get('students/') 
-        setStudents(response.data)
+        const response = await api.get(`students/?page=${page}`);  // backend should support pagination
+        setStudents(response.data.results);
+        setTotalPages(Math.ceil(response.data.count / 5));  // assuming 5 per page
       } catch (err) {
         if (err.response?.status === 401) {
           setError('Unauthorized. Please login again.')
@@ -44,20 +37,23 @@ function Students() {
       } finally {
         setLoading(false)
       }
-    }
+    };
 
-    fetchStudents()
-  }, [])
+    fetchStudents();
+  }, [page]);
 
   const handleDelete = async () => {
     try {
-      const token = localStorage.getItem('token');
       await api.delete(`students/${deleteId}/`);
       setStudents(students.filter(s => s.id !== deleteId));
       setConfirmOpen(false);
     } catch (err) {
-        setError('Failed')
+      setError('Failed');
     }
+  };
+
+  const handlePageChange = (event, value) => {
+    setPage(value);
   };
 
   return (
@@ -79,51 +75,62 @@ function Students() {
       )}
 
       {!loading && students.length > 0 && (
-        <TableContainer component={Paper} sx={{ mt: 3 }}>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>SI.no</TableCell>
-                <TableCell>Full Name</TableCell>
-                <TableCell>Email</TableCell>
-                <TableCell>Phone</TableCell>
-                <TableCell>Roll No</TableCell>
-                <TableCell>Class</TableCell>
-                <TableCell>Date of Birth</TableCell>
-                <TableCell>Admission Date</TableCell>
-                <TableCell>Status</TableCell>
-                {isAdmin && <TableCell>Actions</TableCell>}
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {students.map((s, index) => (
-                <TableRow key={s.id}>
-                  <TableCell>{index + 1}</TableCell>
-                  <TableCell>{s.first_name} {s.last_name}</TableCell>
-                  <TableCell>{s.email}</TableCell>
-                  <TableCell>{s.phone_number}</TableCell>
-                  <TableCell>{s.roll_number}</TableCell>
-                  <TableCell>{s.student_class}</TableCell>
-                  <TableCell>{new Date(s.date_of_birth).toLocaleDateString()}</TableCell>
-                  <TableCell>{new Date(s.admission_date).toLocaleDateString()}</TableCell>
-                  <TableCell>{s.status}</TableCell>
-                  {isAdmin && (
-                    <TableCell>
-                      <IconButton onClick={() => navigate(`/edit-student/${s.id}`)}><EditIcon /></IconButton>
-                      <IconButton onClick={() => { setDeleteId(s.id); setConfirmOpen(true); }}><DeleteIcon /></IconButton>
-                    </TableCell>
-                  )}
+        <>
+          <TableContainer component={Paper} sx={{ mt: 3 }}>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>SI.no</TableCell>
+                  <TableCell>Full Name</TableCell>
+                  <TableCell>Email</TableCell>
+                  <TableCell>Phone</TableCell>
+                  <TableCell>Roll No</TableCell>
+                  <TableCell>Class</TableCell>
+                  <TableCell>Date of Birth</TableCell>
+                  <TableCell>Admission Date</TableCell>
+                  <TableCell>Status</TableCell>
+                  {isAdmin && <TableCell>Actions</TableCell>}
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+              </TableHead>
+              <TableBody>
+                {students.map((s, index) => (
+                  <TableRow key={s.id}>
+                    <TableCell>{(page - 1) * 5 + index + 1}</TableCell>
+                    <TableCell>{s.first_name} {s.last_name}</TableCell>
+                    <TableCell>{s.email}</TableCell>
+                    <TableCell>{s.phone_number}</TableCell>
+                    <TableCell>{s.roll_number}</TableCell>
+                    <TableCell>{s.student_class}</TableCell>
+                    <TableCell>{new Date(s.date_of_birth).toLocaleDateString()}</TableCell>
+                    <TableCell>{new Date(s.admission_date).toLocaleDateString()}</TableCell>
+                    <TableCell>{s.status}</TableCell>
+                    {isAdmin && (
+                      <TableCell>
+                        <IconButton onClick={() => navigate(`/edit-student/${s.id}`)}><EditIcon /></IconButton>
+                        <IconButton onClick={() => { setDeleteId(s.id); setConfirmOpen(true); }}><DeleteIcon /></IconButton>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+
+          <Box display="flex" justifyContent="center" mt={3}>
+            <Pagination
+              count={totalPages}
+              page={page}
+              onChange={handlePageChange}
+              color="primary"
+            />
+          </Box>
+        </>
       )}
-      <Button variant="outlined" sx={{ ml: 70,mt: 2 }} onClick={() => navigate('/dashboard')}>
+
+      <Button variant="outlined" sx={{ ml: 70, mt: 2 }} onClick={() => navigate('/dashboard')}>
         Back
       </Button>
 
-      {/* Confirmation Dialog */}
       <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
         <DialogTitle>Delete Student</DialogTitle>
         <DialogContent>Are you sure you want to delete this student?</DialogContent>
@@ -133,7 +140,8 @@ function Students() {
         </DialogActions>
       </Dialog>
     </Container>
-  )
+  );
 }
+
 
 export default Students

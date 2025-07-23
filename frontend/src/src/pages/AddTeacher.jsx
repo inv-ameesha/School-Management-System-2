@@ -5,11 +5,6 @@ import {
   Button,
   Box,
   Alert,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  FormHelperText,
 } from '@mui/material'
 import { useForm } from 'react-hook-form'
 import { useState } from 'react'
@@ -29,7 +24,7 @@ const AddTeacher = () => {
 
   const onSubmit = async (data) => {
     try {
-      const token = localStorage.getItem('token')
+      const token = localStorage.getItem('token')  
       const response = await fetch('http://localhost:8000/people/teachers/', {
         method: 'POST',
         headers: {
@@ -57,7 +52,7 @@ const AddTeacher = () => {
 
   return (
     <Container maxWidth="sm" sx={{ mt: 5 }}>
-      <Typography variant="h5" gutterBottom sx={{ ml: 25 }}>
+      <Typography variant="h5" gutterBottom sx={{ml:25}}>
         Add Teacher
       </Typography>
 
@@ -122,21 +117,14 @@ const AddTeacher = () => {
             error={!!errors.doj}
             helperText={errors.doj && 'Date of joining is required'}
           />
-          
-          {/* Status Dropdown */}
-          <FormControl fullWidth margin="normal" error={!!errors.status}>
-            <InputLabel>Status</InputLabel>
-            <Select
-              defaultValue="Active"
-              label="Status"
-              {...register('status', { required: 'Status is required' })}
-            >
-              <MenuItem value="Active">Active</MenuItem>
-              <MenuItem value="Inactive">Inactive</MenuItem>
-            </Select>
-            {errors.status && <FormHelperText>{errors.status.message}</FormHelperText>}
-          </FormControl>
-
+          <TextField
+            label="Status"
+            id="status"
+            name="status"
+            {...register('status', { required: true })}
+            error={!!errors.status}
+            helperText={errors.status && 'Status is required'}
+          />
           <TextField
             label="Username"
             id="username"
@@ -163,7 +151,7 @@ const AddTeacher = () => {
 
       {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
       {success && <Alert severity="success" sx={{ mt: 2 }}>{success}</Alert>}
-      <Button variant="outlined" sx={{ ml: 2, mt: 2 }} onClick={() => navigate('/dashboard')}>
+      <Button variant="outlined" sx={{ ml: 2,mt: 2 }} onClick={() => navigate('/dashboard')}>
         Back
       </Button>
     </Container>

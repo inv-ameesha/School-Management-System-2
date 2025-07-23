@@ -51,7 +51,7 @@ const EditStudent = () => {
         body: JSON.stringify(student),
       });
       if (res.ok) {
-        navigate('/students');
+        setSuccess('Student updated successfully!');
       } else {
         setError('Failed to update student.');
       }

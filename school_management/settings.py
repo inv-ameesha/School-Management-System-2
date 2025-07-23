@@ -131,7 +131,9 @@ REST_FRAMEWORK = {
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
-    )
+    ),
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.LimitOffsetPagination',
+    'PAGE_SIZE': 5,
 }
 
 # CORS settings
@@ -148,7 +150,6 @@ EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = 'ameesha468@gmail.com'
-EMAIL_HOST_PASSWORD = 'aapk aysx hsob evve'  # Must be an App Password!
+EMAIL_HOST_PASSWORD = 'aapk aysx hsob evve'  
 DEFAULT_FROM_EMAIL = 'ameesha468@gmail.com'
-
 
