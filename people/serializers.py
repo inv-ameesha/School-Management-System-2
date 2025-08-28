@@ -2,8 +2,8 @@ from rest_framework import serializers
 from django.contrib.auth.models import User
 from rest_framework.exceptions import ValidationError, AuthenticationFailed
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from .models import Teacher, Student,FeeStructure,StudentFee
-from .models import Exam, Question, ExamAssignment, StudentExamAttempt, StudentAnswer
+from .models import Teacher, Student,FeeStructure,StudentFee,Payment,TransactionLog
+from .models import Exam, Question, ExamAssignment, StudentExamAttempt, StudentAnswer,Fine
 
 
 class TeacherSerializer(serializers.ModelSerializer):
@@ -51,7 +51,7 @@ class StudentSerializer(serializers.ModelSerializer):
         model = Student
         fields = [
             'id', 'first_name', 'last_name', 'phone_number', 'roll_number',
-            'student_class', 'date_of_birth', 'admission_date',
+            'grade','academic_year', 'date_of_birth', 'admission_date',
             'status', 'username', 'password', 'email', 'user', 'assigned_teacher'
         ]
         read_only_fields = ['user', 'id']
@@ -220,3 +220,43 @@ class FeeAllocationSerializer(serializers.ModelSerializer):
         StudentFee.objects.bulk_create(student_fees)
 
         return fee_structure
+
+class FeeStructureSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FeeStructure
+        fields = ['grade', 'academic_year', 'base_fee', 'due_date', 'fine_per_day']
+
+class StudentFeeSerializer(serializers.ModelSerializer):
+    fee_structure = FeeStructureSerializer(read_only=True)
+    class Meta:
+        model = StudentFee
+        fields = ['id', 'total_amount', 'paid_amount', 'due_date', 'status', 'fee_structure']
+
+class PaymentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Payment
+        fields = ['id', 'student_fee', 'gateway', 'transaction_id', 'amount', 'status', 'payment_date', 'remarks']
+
+class InitiatePaymentSerializer(serializers.Serializer):
+    student_fee_id = serializers.IntegerField()
+    gateway = serializers.ChoiceField(choices=[('razorpay','Razorpay'), ('offline','Offline')])
+
+class TransactionLogSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TransactionLog
+        fields = '__all__'
+        read_only_fields = ['id', 'created_at']
+
+class SimulateRazorpayPaymentSerializer(serializers.Serializer):
+    payment_id = serializers.IntegerField()
+    razorpay_order_id = serializers.CharField()
+
+class FineSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Fine
+        fields = ["id", "student_fee", "days_overdue", "fine_amount", "calculated_on"]
+        read_only_fields = ["id", "days_overdue", "fine_amount", "calculated_on"]
+        
+
+class FineRequestSerializer(serializers.Serializer):
+    student_fee_id = serializers.IntegerField()
