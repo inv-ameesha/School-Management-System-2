@@ -1,7 +1,7 @@
 from rest_framework import viewsets, generics
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from django.contrib.auth.models import User
-from .models import Teacher, Student ,Payment, Exam , Question, ExamAssignment, StudentExamAttempt, StudentAnswer,FeeStructure,StudentFee,TransactionLog,Receipt
+from .models import Teacher, Student ,Payment, Exam , Question, ExamAssignment, StudentExamAttempt, StudentAnswer,FeeStructure,StudentFee,TransactionLog,Receipt,Fine
 from django.db import transaction
 import os
 from reportlab.pdfgen import canvas
@@ -19,7 +19,7 @@ import pkg_resources
 from django.conf import settings
 from rest_framework.views import APIView
 from django.utils.timezone import make_aware
-from .permission import IsTeacher
+from .permission import IsTeacher,IsStudent
 from io import TextIOWrapper
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -27,7 +27,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework.views import APIView
 from django.http import HttpResponse
 import csv
-from rest_framework.parsers import MultiPartParser
+from rest_framework.parsers import MultiPartParser,FormParser
 from rest_framework.permissions import IsAdminUser
 from rest_framework import status
 from .models import Student, Teacher
@@ -40,7 +40,7 @@ from django.utils import timezone
 from datetime import datetime, timedelta
 from rest_framework.permissions import AllowAny
 from rest_framework.generics import RetrieveAPIView
-
+from datetime import datetime
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
 #viewset : allows multiple views within a single class
@@ -145,7 +145,15 @@ class StudentViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         if not request.user.is_superuser:
             return Response({"detail": "Only admin can delete students."}, status=403)
-        return super().destroy(request, *args, **kwargs)
+        student = Student.objects.get(pk=kwargs['pk'])
+        student.status = 'Inactive'
+        email_address = student.email
+        tag = str(datetime.now())
+        new_email_address = email_address.replace("@", tag + "@")
+        student.email=new_email_address
+        print(new_email_address)
+        student.save()
+        return Response({"detail": "deleted."}, status=202)
 
     @action(detail=False, methods=['get'], url_path='me', permission_classes=[IsAuthenticated])
     def me(self, request):
@@ -168,16 +176,46 @@ class ExportStudentsCSV(APIView):
     permission_classes = [IsAdminUser]
 
     def get(self, request):
+        # Filters from query params
+        grade = request.GET.get('grade')               
+        start_date = request.GET.get('start_date')     
+        end_date = request.GET.get('end_date')       
+        status = request.GET.get('status') 
         students = Student.objects.all()
-        response = HttpResponse(content_type='text/csv')
-        response['Content-Disposition'] = 'attachment; filename="students.csv"'
+        student_fee = StudentFee.objects.all()
+        # Filter by grade
+        if grade:
+            students = students.filter(grade=grade)
+        if status == 'overdue':
+            students_overdue = student_fee.filter(status='overdue')
+            student_ids = students_overdue.values_list('student_id', flat=True)
+            students = students.filter(id__in=student_ids).distinct()
+        # Filter students who have at least one paid fee
+        paid_fees = StudentFee.objects.filter(status='paid')
+        # Apply date range filter
+        if start_date and end_date : 
+            if start_date:
+                start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
+                paid_fees = paid_fees.filter(created_at__gte=start_date_obj)
+            if end_date:
+                end_date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
+                paid_fees = paid_fees.filter(created_at__lte=end_date_obj)
+            student_ids = paid_fees.values_list('student_id', flat=True)
+            students = students.filter(id__in=student_ids).distinct()
+
+        response = HttpResponse(content_type='text/csv')#mentions that it contains csv data
+        response['Content-Disposition'] = 'attachment; filename="students.csv"'#force download
         writer = csv.writer(response)
-        writer.writerow(['First Name', 'Last Name', 'Email', 'Phone', 'Roll No', 'Class'])
 
+        # CSV header
+        writer.writerow(['First Name', 'Last Name', 'Email', 'Phone', 'Roll No', 'Grade'])
+
+        # CSV rows
         for s in students:
-            writer.writerow([s.first_name, s.last_name, s.email, s.phone_number, s.roll_number, s.student_class])
-        return response
+            if not s.status == 'Inactive':
+                writer.writerow([s.first_name, s.last_name, s.email, s.phone_number, s.roll_number, s.grade])
 
+        return response
 
 class ExportTeachersCSV(APIView):
     permission_classes = [IsAdminUser]
@@ -195,54 +233,89 @@ class ExportTeachersCSV(APIView):
 
 class ImportStudentsCSV(APIView):
     parser_classes = [MultiPartParser]
-    permission_classes = [IsAuthenticated]  
+    permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
-        csv_file = request.FILES.get('file')
+        csv_file = request.FILES.get("file")
 
-        if not csv_file or not csv_file.name.endswith('.csv'):
-            return Response({"error": "Invalid file format"}, status=status.HTTP_400_BAD_REQUEST)
+        if not csv_file or not csv_file.name.endswith(".csv"):
+            return Response(
+                {"error": "Invalid file format"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        data_set = TextIOWrapper(csv_file.file, encoding='utf-8')
-        csv_reader = csv.DictReader(data_set)
-        created = 0
+        data_set = TextIOWrapper(csv_file.file, encoding="utf-8")#converts the file into a text stream
+        csv_reader = csv.DictReader(data_set)#saves the data in dict format like key-value pair
 
+        created, errors = 0, []
         is_admin = request.user.is_staff
-        is_teacher = hasattr(request.user, 'teacher')
+        is_teacher = hasattr(request.user, "teacher")
 
-        for row in csv_reader:
-            if not User.objects.filter(username=row['username']).exists():
-                user = User.objects.create_user(
-                    username=row['username'],
-                    password=row['password'],
-                    email=row['email']
-                )
+        for i, row in enumerate(csv_reader, start=1):
+            try:
+
+                if User.objects.filter(username=row.get("username")).exists():
+                    errors.append(f"Row {i}: Username {row['username']} already exists")
+                    continue
+                if Student.objects.filter(roll_number=row.get("roll_number")).exists():
+                    errors.append(f"Row {i}: Roll number {row['roll_number']} already exists")
+                    continue
+                if Student.objects.filter(email=row.get("email")).exists():
+                    errors.append(f"Row {i}: Email {row['email']} already exists")
+                    continue
 
                 teacher = None
-                if is_admin and 'assigned_teacher_id' in row and row['assigned_teacher_id']:
+                if is_admin and row.get("assigned_teacher_id"):
                     try:
-                        teacher = Teacher.objects.get(id=row['assigned_teacher_id'])
+                        teacher = Teacher.objects.get(id=row["assigned_teacher_id"])
                     except Teacher.DoesNotExist:
-                        continue  # Skip if teacher not found
-                elif is_teacher:
-                    teacher = request.user.teacher  # Assign to uploading teacher
+                        errors.append(
+                            f"Row {i}: Teacher with ID {row['assigned_teacher_id']} not found"
+                        )
+                        continue
+                # elif is_teacher:
+                #     teacher = request.user.teacher
 
-                Student.objects.create(
-                    user=user,
-                    first_name=row['first_name'],
-                    last_name=row['last_name'],
-                    email=row['email'],
-                    phone_number=row['phone_number'],
-                    roll_number=row['roll_number'],
-                    student_class=row['student_class'],
-                    date_of_birth=row['date_of_birth'],
-                    admission_date=row['admission_date'],
-                    status=row['status'],
-                    assigned_teacher=teacher
-                )
-                created += 1
+                with transaction.atomic():
+                    # Create user
+                    # user = User.objects.create_user(
+                    #     username=row["username"],
+                    #     password=row["password"],
+                    #     email=row["email"]
+                    # )
 
-        return Response({"message": f"{created} students imported successfully"}, status=status.HTTP_201_CREATED)
+                    # Prepare student data
+                    student_data = {
+                        "username": row.get("username"),
+                        "password": row.get("password"),
+                        "email": row.get("email"),
+                        "first_name": row.get("first_name"),
+                        "last_name": row.get("last_name"),
+                        "phone_number": row.get("phone_number"),
+                        "roll_number": row.get("roll_number"),
+                        "grade": row.get("grade") or None,
+                        "academic_year": row.get("academic_year") or None,
+                        "date_of_birth": row.get("date_of_birth"),
+                        "admission_date": row.get("admission_date"),
+                        "status": row.get("status"),
+                        "assigned_teacher": teacher.id if teacher else None,
+                    }
+                    serializer = StudentSerializer(data=student_data)
+                    serializer.is_valid(raise_exception=True)
+                    serializer.save()
+
+                    created += 1 #used down
+
+            except Exception as e:
+                errors.append(f"Row {i}: {str(e)}")
+
+        return Response(
+            {
+                "message": f"{created} students imported successfully",
+                "errors": errors,
+            },
+            status=status.HTTP_201_CREATED if created else status.HTTP_400_BAD_REQUEST,
+        )
 
 class PasswordResetRequestView(APIView):
     permission_classes = [AllowAny] 
@@ -449,6 +522,8 @@ class StudentFeeView(APIView):
             academic_year=academic_year
         )
         fees = StudentFee.objects.filter(student=student, fee_structure__in=fee_structures)
+        for fee in fees:
+            fee.update_status()
 
         serializer = StudentFeeSerializer(fees, many=True)
         return Response(serializer.data)
@@ -458,21 +533,61 @@ class PaymentOptionsView(APIView):
         return Response({"options": ["razorpay", "offline"]})
 
 class InitiatePaymentView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated,IsStudent]
 
     def post(self, request):
         serializer = InitiatePaymentSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         student_fee_id = serializer.validated_data['student_fee_id']
         gateway = serializer.validated_data['gateway']
+        with transaction.atomic():#single fetch transaction
+                try:
+                    student_fee = StudentFee.objects.select_for_update().get(
+                        id=student_fee_id, student=request.user.student
+                    )#select_for_update() - implements row-level locking in that student_fee row
+                except StudentFee.DoesNotExist:
+                    return Response(
+                        {"error": "Student fee not found"},
+                        status=status.HTTP_404_NOT_FOUND
+                    )
 
-        try:
-            with transaction.atomic():
-                student_fee = StudentFee.objects.select_for_update().get(
-                    id=student_fee_id, student=request.user.student
-                )
+                if student_fee.lock == 1:
+                    return Response({"error": "Payment is already being processed for this fee."}, status=400)
+
+                student_fee.lock = 1
+                student_fee.save()
+
                 if student_fee.status == "paid":
+                    student_fee.lock = 0  
+                    student_fee.save()
                     return Response({"error": "Fee already paid"}, status=400)
+
+                today = timezone.now().date()
+                if today > student_fee.due_date:
+                    days_overdue = (today - student_fee.due_date).days
+                    fine_amount = days_overdue * student_fee.fee_structure.fine_per_day
+                else:
+                    days_overdue = 0
+                    fine_amount = 0
+                try:
+                    # Update or create Fine record
+                    Fine.objects.update_or_create(
+                        student_fee=student_fee,
+                        student=student_fee.student,
+                        defaults={
+                            "days_overdue": days_overdue,
+                            "fine_amount": fine_amount,
+                            "calculated_on": today,
+                        }
+                    )
+                except Exception as e:
+                    return Response(
+                        {"error": f"Failed to update fine: {str(e)}"},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+
+                student_fee.total_amount = student_fee.fee_structure.base_fee + fine_amount
+                student_fee.save()
 
                 existing_payment = Payment.objects.filter(
                     student_fee=student_fee,
@@ -480,17 +595,27 @@ class InitiatePaymentView(APIView):
                 ).first()
                 if existing_payment:
                     return Response({"error": "Payment already initiated"}, status=400)
+
                 if gateway == "razorpay":
                     try:
                         client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
-                        amount_in_paise = int(student_fee.total_amount*100)
+                        amount_in_paise = int(student_fee.total_amount * 100)#razorpay expects the smallest currency unit
                         order = client.order.create({
                             "amount": amount_in_paise,
                             "currency": "INR",
-                            "receipt": f"STF{student_fee.id}",
-                            "payment_capture": 1
+                            "receipt": f"{student_fee.id}",
+                            "payment_capture": 1#razopay auto capture the payment
                         })
-
+                    except razorpay.errors.BadRequestError as e:
+                        return Response(
+                            {"error": f"Invalid Razorpay request: {str(e)}"},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    except razorpay.errors.ServerError as e:
+                        return Response(
+                            {"error": f"Razorpay server error: {str(e)}"},
+                            status=status.HTTP_502_BAD_GATEWAY
+                        )
                     except Exception as e:
                         TransactionLog.objects.create(
                             payment=None,
@@ -498,55 +623,81 @@ class InitiatePaymentView(APIView):
                             log_type="error"
                         )
                         return Response({"error": "Failed to create Razorpay order"}, status=500)
-                    
-                    payment = Payment.objects.create(
-                        student_fee=student_fee,
-                        gateway="razorpay",
-                        transaction_id=order['id'],
-                        amount=student_fee.total_amount,
-                        status="initiated"
+                    try:
+                        payment = Payment.objects.create(
+                            student_fee=student_fee,
+                            gateway="razorpay",
+                            transaction_id=order['id'],
+                            amount=student_fee.total_amount,
+                            status="initiated"
+                        )
+                        TransactionLog.objects.create(
+                            payment=payment,
+                            log_message=f"Payment initiated via Razorpay, order_id={order['id']}",
+                            log_type="info"
+                        )
+                        return Response({
+                            "order_id": order['id'],
+                            "amount": student_fee.total_amount,
+                            "currency": "INR",
+                            "payment_id": payment.id
+                        })
+                    except Exception as e:
+                        return Response(
+                            {"error": f"Failed to create Payment record: {str(e)}"},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                        )
+
+                elif gateway == "offline":
+                    try:
+                        payment = Payment.objects.create(
+                            student_fee=student_fee,
+                            gateway="offline",
+                            amount=student_fee.total_amount,
+                            status="success",
+                            remarks="Cash / Offline payment"
+                        )
+                        student_fee.paid_amount = student_fee.total_amount
+                        student_fee.status = "paid"
+                        student_fee.save()
+                        
+                        TransactionLog.objects.create(
+                            payment=payment,
+                            log_message="Payment marked as offline success",
+                            log_type="info"
+                        )
+                        return Response({"message": "Payment marked as offline success", "payment_id": payment.id})
+                    except Exception as e:
+                        return Response(
+                            {"error": f"Failed to create offline payment: {str(e)}"},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                        )
+                else:
+                    return Response(
+                        {"error": f"Unsupported payment gateway: {gateway}"},
+                        status=status.HTTP_400_BAD_REQUEST
                     )
-                    TransactionLog.objects.create(
-                        payment=payment,
-                        log_message=f"Payment initiated via Razorpay, order_id={order['id']}",
-                        log_type="info"
-                    )
-                    return Response({
-                        "order_id": order['id'],
-                        "amount": student_fee.total_amount,
-                        "currency": "INR",
-                        "payment_id": payment.id
-                    })
-                else: 
-                    payment = Payment.objects.create(
-                        student_fee=student_fee,
-                        gateway="offline",
-                        amount=student_fee.total_amount,
-                        status="success",
-                        remarks="Cash / Offline payment"
-                    )
-                    student_fee.paid_amount = student_fee.total_amount
-                    student_fee.status = "paid"
-                    student_fee.save()
-                    TransactionLog.objects.create(
-                        payment=payment,
-                        log_message="Payment marked as offline success",
-                        log_type="info"
-                    )
-                    return Response({"message": "Payment marked as offline success", "payment_id": payment.id})
-        except StudentFee.DoesNotExist:
-                    return Response({"error": "Student fee not found"}, status=status.HTTP_404_NOT_FOUND)
-   
+                
+        # except StudentFee.DoesNotExist:
+        #     return Response({"error": "Student fee not found"}, status=status.HTTP_404_NOT_FOUND)
+
 class VerifyRazorpayPaymentView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated,IsStudent]
 
     def post(self, request):
-        data = request.data
+        data =  request.data
+        #extract required fields
         payment_id = data.get('payment_id')
         razorpay_order_id = data.get('razorpay_order_id')
         razorpay_payment_id = data.get('razorpay_payment_id')
         razorpay_signature = data.get('razorpay_signature')
 
+        if not all([payment_id, razorpay_order_id, razorpay_payment_id, razorpay_signature]):
+            return Response(
+                {"error": "Missing required payment fields"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        #authenticate with razorpay
         client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
         try:
             client.utility.verify_payment_signature({
@@ -555,10 +706,28 @@ class VerifyRazorpayPaymentView(APIView):
                 "razorpay_signature": razorpay_signature
             })
         except razorpay.errors.SignatureVerificationError:
-            return Response({"error": "Payment verification failed"}, status=400)
-
+            TransactionLog.objects.create(
+                payment_id=payment_id,
+                log_message="Razorpay signature verification failed",
+                log_type="error"
+            )
+            return Response({"error": "Payment verification failed"}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response(
+                {"error": f"Unexpected error during signature verification: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        #get payment record
         try:
             payment = Payment.objects.get(id=payment_id, transaction_id=razorpay_order_id)
+        except Payment.DoesNotExist:
+            return Response({"error": "Payment record not found"}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response(
+                {"error": f"Error fetching payment: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        try:
             payment.status = "success"
             payment.transaction_id = razorpay_payment_id
             payment.save()
@@ -567,6 +736,7 @@ class VerifyRazorpayPaymentView(APIView):
             student_fee = payment.student_fee
             student_fee.paid_amount = student_fee.total_amount
             student_fee.status = "paid"
+            student_fee.lock = 0
             student_fee.save()
 
             TransactionLog.objects.create(
@@ -574,7 +744,13 @@ class VerifyRazorpayPaymentView(APIView):
                 log_message=f"Payment verified successfully. Razorpay Payment ID: {razorpay_payment_id}",
                 log_type="success"
             )
+        except Exception as e:
+            return Response(
+                {"error": f"Error updating payment/student fee: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
+        try:
             # Generate receipt PDF
             receipt_folder = os.path.join(settings.MEDIA_ROOT, 'receipts')
             os.makedirs(receipt_folder, exist_ok=True)
@@ -598,6 +774,12 @@ class VerifyRazorpayPaymentView(APIView):
             c.showPage()
             c.save()
 
+        except Exception as e:
+            return Response(
+                {"error": f"Error generating receipt PDF: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        try:
             # Save receipt entry
             receipt = Receipt.objects.create(
                 payment=payment,
@@ -620,7 +802,9 @@ class VerifyRazorpayPaymentView(APIView):
             return Response({"error": "Payment record not found"}, status=404)
 
 class TransactionLogView(APIView):
+    permission_classes = [IsAuthenticated]
     def get(self, request):
+        #get logs from the latest to oldest
         logs = TransactionLog.objects.all().order_by('-created_at')
         serializer = TransactionLogSerializer(logs, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -683,9 +867,16 @@ class TransactionLogView(APIView):
 #             return Response({"error": "Payment failed"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class SimulateRazorpayPaymentView(APIView):
+    permission_classes = [IsAuthenticated,IsStudent]
     def post(self, request):
-        serializer = SimulateRazorpayPaymentSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        try:
+            serializer = SimulateRazorpayPaymentSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+        except Exception as e:
+            return Response(
+                {"error": f"Invalid input: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         payment_id = serializer.validated_data['payment_id']
         razorpay_order_id = serializer.validated_data['razorpay_order_id']
 
@@ -693,66 +884,153 @@ class SimulateRazorpayPaymentView(APIView):
             payment = Payment.objects.get(id=payment_id, transaction_id=razorpay_order_id)
         except Payment.DoesNotExist:
             return Response({"error": "Payment record not found"}, status=status.HTTP_404_NOT_FOUND)
-
-        # fake payment id from Razorpay
-        razorpay_payment_id = f"pay_{payment_id}XYZ"
-
-        # generate signature
-        msg = f"{razorpay_order_id}|{razorpay_payment_id}"
-        generated_signature = hmac.new(
-            bytes(settings.RAZORPAY_KEY_SECRET, "utf-8"),
-            bytes(msg, "utf-8"),
-            hashlib.sha256
-        ).hexdigest()
+        except Exception as e:
+            return Response(
+                {"error": f"Error fetching payment: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        try:
+            # fake payment id from Razorpay
+            razorpay_payment_id = f"pay_{payment_id}XYZ"
+        except Exception as e:
+            return Response(
+                {"error": f"Failed to generate payment_id: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        try:
+            # generate signature
+            msg = f"{razorpay_order_id}|{razorpay_payment_id}"
+            generated_signature = hmac.new(
+                bytes(settings.RAZORPAY_KEY_SECRET, "utf-8"),
+                bytes(msg, "utf-8"),
+                hashlib.sha256
+            ).hexdigest()
+        except Exception as e:
+            return Response(
+                {"error": f"Failed to generate signature: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
         TransactionLog.objects.create(
             payment=payment,
             log_message=f"Simulated Razorpay payment generated. razorpay_payment_id={razorpay_payment_id}",
             log_type="info"
         )
-        # return payload same as Razorpay would give
-        return Response({
-            "payment_id": payment_id,
-            "razorpay_order_id": razorpay_order_id,
-            "razorpay_payment_id": razorpay_payment_id,
-            "razorpay_signature": generated_signature
-        }, status=status.HTTP_200_OK)
-
-class FineCalculationView(APIView):
-    def post(self, request):
-        # Validate input
-        serializer = FineRequestSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        student_fee_id = serializer.validated_data["student_fee_id"]
-
-        # Fetch StudentFee
         try:
-            student_fee = StudentFee.objects.get(id=student_fee_id)
-        except StudentFee.DoesNotExist:
-            return Response({"error": "StudentFee not found"}, status=status.HTTP_404_NOT_FOUND)
-
-        today = date.today()
-
-        # Case 1: Already paid and on/before due date → No fine
-        if student_fee.status == "paid" and student_fee.paid_on and student_fee.paid_on <= student_fee.due_date:
-            return Response({"message": "No fine applicable. Payment already on time."}, status=status.HTTP_200_OK)
-
-        # Case 2: Overdue
-        overdue_days = (today - student_fee.due_date).days
-        if overdue_days > 0:
-            fine_amount = Decimal(overdue_days) * Decimal("10.00")  # Example ₹10/day
-
-            fine, created = Fine.objects.get_or_create(
-                student_fee=student_fee,
-                calculated_on=today,
-                defaults={
-                    "days_overdue": overdue_days,
-                    "fine_amount": fine_amount
-                }
+            # return payload same as Razorpay would give
+            return Response({
+                "payment_id": payment_id,
+                "razorpay_order_id": razorpay_order_id,
+                "razorpay_payment_id": razorpay_payment_id,
+                "razorpay_signature": generated_signature
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response(
+                {"error": f"Failed to build response: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-            fine_data = FineSerializer(fine).data
-            fine_data["status"] = "fine_created" if created else "fine_already_exists"
+# class FineCalculationView(APIView):
+#     def post(self, request):
+#         # Validate input
+#         serializer = FineRequestSerializer(data=request.data)
+#         serializer.is_valid(raise_exception=True)
+#         student_fee_id = serializer.validated_data["student_fee_id"]
 
-            return Response(fine_data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+#         # Fetch StudentFee
+#         try:
+#             student_fee = StudentFee.objects.get(id=student_fee_id)
+#         except StudentFee.DoesNotExist:
+#             return Response({"error": "StudentFee not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        return Response({"message": "No fine applicable yet."}, status=status.HTTP_200_OK)
+#         today = date.today()
+
+#         # Case 1: Already paid and on/before due date → No fine
+#         if student_fee.status == "paid" and student_fee.paid_on and student_fee.paid_on <= student_fee.due_date:
+#             return Response({"message": "No fine applicable. Payment already on time."}, status=status.HTTP_200_OK)
+
+#         # Case 2: Overdue
+#         overdue_days = (today - student_fee.due_date).days
+#         if overdue_days > 0:
+#             fine_amount = Decimal(overdue_days) * student_fee.fine_per_day  
+
+#             fine, created = Fine.objects.get_or_create(
+#                 student_fee=student_fee,
+#                 calculated_on=today,
+#                 defaults={
+#                     "days_overdue": overdue_days,
+#                     "fine_amount": fine_amount
+#                 }
+#             )
+
+#             fine_data = FineSerializer(fine).data
+#             fine_data["status"] = "fine_created" if created else "fine_already_exists"
+
+#             return Response(fine_data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+#         return Response({"message": "No fine applicable yet."}, status=status.HTTP_200_OK)
+
+class StudentFeeAlertView(APIView):
+    permission_classes = [IsAuthenticated,IsStudent]
+
+    def get(self, request):
+        #get the corresponsing student record
+        try:
+            student = Student.objects.get(user=request.user)  
+        except Student.DoesNotExist:
+            return Response({"message": "Student record not found"}, status=404)
+        #get the corresponsing student fee record
+        try:
+            student_fee = StudentFee.objects.get(student=student)
+        except StudentFee.DoesNotExist:
+            return Response({"message": "No fee record found"}, status=404)
+
+        if student_fee.status.lower() == "paid":
+            return Response({"message": "Fee already paid. No alert required."}, status=200)
+
+        fine = Fine.objects.filter(student_fee=student_fee).order_by('-calculated_on').first()
+
+        return Response({
+            "due_date": student_fee.due_date,
+            "base_fee": student_fee.fee_structure.base_fee,
+            "fine_amount": fine.fine_amount if fine else 0,
+            "days_overdue": fine.days_overdue if fine else 0,
+            "total_amount": student_fee.total_amount
+        })
+
+class ReceiptUploadView(APIView):
+    permission_classes = [IsAuthenticated,IsStudent]
+    parser_classes = [MultiPartParser]
+
+    def post(self, request):
+        student = request.user.student  
+
+        # Find student's fee record which is already uploaded
+        student_fee = StudentFee.objects.filter(student=student, status="uploaded").first()
+        if student_fee:
+            return Response(
+                {"error": "Receipt uploaded"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        # Find student's fee record which has not paid yet
+        student_fee = StudentFee.objects.filter(student=student, status="paid").first()
+        if not student_fee:
+            return Response(
+                {"error": "No paid fee found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Ensure only PDF upload
+        uploaded_file = request.FILES.get("receipt")#key in postman
+        if not uploaded_file:
+            return Response({"error": "No file uploaded"}, status=status.HTTP_400_BAD_REQUEST)
+        if not uploaded_file.name.lower().endswith(".pdf") or uploaded_file.content_type != "application/pdf":
+            return Response({"error": "Only PDF receipts are allowed"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Update status to uploaded (don’t save file)
+        student_fee.status = "uploaded"
+        student_fee.save()
+
+        return Response({
+            "message": "Receipt uploaded successfully",
+            "status": student_fee.status
+        }, status=status.HTTP_200_OK)
